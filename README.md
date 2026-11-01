@@ -8,6 +8,19 @@ No daemon: the skin runs a small Go executable every 60 seconds. It reads
 each CLI's own local login, writes a flat `data.json`, and exits. If the
 skin is not loaded, nothing runs.
 
+## Screenshots
+
+<p align="center">
+  <img src="img/1.png" width="600" alt="AgentMeter widget on the desktop"><br>
+  <img src="img/2.png" width="260" alt="Session and weekly usage cards">
+  <img src="img/3.png" width="260" alt="Settings: providers, transparency, size">
+</p>
+<p align="center">
+  <img src="img/4.png" width="260" alt="Expired login state">
+  <img src="img/5.png" width="260" alt="Codex provider card">
+  <img src="img/6.png" width="260" alt="Active process indicator">
+</p>
+
 ## Requirements
 
 | What | Needed for | Notes |
