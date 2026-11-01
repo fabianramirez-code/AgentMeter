@@ -1,0 +1,6 @@
+*.exe
+data.json
+state.json
+/rainmeter/
+/go/
+.atl/
