@@ -59,8 +59,9 @@ Write-Host "Running tests..."
 & $go test ./...
 if ($LASTEXITCODE -ne 0) { throw "go test failed" }
 
+# -trimpath keeps local paths (user name, module cache) out of the binary.
 Write-Host "Building agentmeter.exe..."
-& $go build -ldflags "-s -w -H windowsgui" -o $exePath .
+& $go build -trimpath -ldflags "-s -w -H windowsgui" -o $exePath .
 if ($LASTEXITCODE -ne 0) { throw "go build failed" }
 
 Write-Host "Installing skin to $skinsDir..."

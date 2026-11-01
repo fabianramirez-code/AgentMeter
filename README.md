@@ -28,6 +28,15 @@ simply show an error message on their cards; the others keep working.
 
 ## Install
 
+Quickest, no Go needed: download `AgentMeter-<version>.zip` from
+[Releases](https://github.com/fabianramirez-code/AgentMeter/releases), extract
+the `AgentMeter` folder into `%USERPROFILE%\Documents\Rainmeter\Skins\`, then
+in Rainmeter: **Refresh all**, **Manage**, `AgentMeter\AgentMeter.ini`,
+**Load**. The bundled `agentmeter.exe` is not code-signed, so Windows
+SmartScreen or your antivirus may ask before the first run.
+
+To build from source instead:
+
 Option A, you already have Rainmeter installed:
 
 ```powershell
