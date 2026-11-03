@@ -34,7 +34,16 @@ func main() {
 	procsFlag := flag.String("procs", defaultProcs, "provider=processName pairs separated by ;")
 	fallbackMin := flag.Int("fallback", 20, "fallback poll interval in minutes")
 	logPath := flag.String("log", "", "append fetches and errors to this file (empty = stderr only)")
+	renderFmt := flag.String("render", "", "print the -out data.json for a front end instead of collecting: xbar, waybar or conky")
 	flag.Parse()
+
+	if *renderFmt != "" {
+		if err := runRender(*renderFmt, *outPath, *logPath, os.Stdout); err != nil {
+			log.Println(err)
+			os.Exit(2)
+		}
+		return
+	}
 
 	log.SetPrefix("agentmeter: ")
 	if *logPath != "" {
