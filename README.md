@@ -4,6 +4,12 @@ A Rainmeter desktop widget that shows subscription quota usage for Claude,
 Codex and Gemini (Antigravity CLI): session (5h) and weekly (7d) usage, time
 until reset, and whether each CLI is currently running.
 
+On the Claude screen, if your account has a per-model weekly limit (shown as
+"Current week (<model>)" in `claude /usage`, e.g. Fable), a third card appears
+below the usual two. The widget doesn't grow to fit it: the card area scrolls
+with the mouse wheel instead, with a thin scrollbar on the right edge.
+Codex and Gemini never have a third card, so their screens never scroll.
+
 No daemon: the skin runs a small Go executable every 60 seconds. It reads
 each CLI's own local login, writes a flat `data.json`, and exits. If the
 skin is not loaded, nothing runs.
@@ -147,6 +153,16 @@ build.ps1                                 test, build, install (optionally porta
 go/, rainmeter/                           local toolchains downloaded by build.ps1 (git-ignored)
 docs/design.md                            design notes
 ```
+
+### Editing the skin
+
+Always install skin changes with `.\build.ps1`, never by copying
+`AgentMeter.ini` into the Rainmeter `Skins` folder by hand. The repo keeps
+the `.ini` as plain UTF-8 (diff-friendly), but Rainmeter reads skin files as
+ANSI unless they carry a UTF-16 LE BOM, so a raw copy turns the header glyphs
+(▲ ▼ ⚙) into mojibake. `build.ps1` does that conversion at install time.
+It does not reload the skin, so afterwards run **Refresh** in Rainmeter (or
+`Rainmeter.exe !Refresh AgentMeter`) to see the change.
 
 ## License
 

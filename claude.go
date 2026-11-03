@@ -13,8 +13,14 @@ import (
 // Authorization: Bearer <claudeAiOauth.accessToken> and
 // anthropic-beta: oauth-2025-04-20. Verified response has five_hour and
 // seven_day objects, each with "utilization" (0-100 float) and "resets_at"
-// (RFC3339 string). If this provider shows "error", the URL, headers or
-// response schema likely changed. Last verified: 2026-10-31.
+// (RFC3339 string). It also has a "limits" array of per-window entries,
+// each with "kind" ("session", "weekly_all", "weekly_scoped", ...),
+// "percent" (0-100 int), "resets_at" (RFC3339 string), and "scope"
+// (null, or {"model": {"display_name": "Fable"}, "surface": ...} for a
+// weekly_scoped entry). A "weekly_scoped" entry is the per-model weekly
+// limit (e.g. "Fable"); there is no top-level seven_day_fable key. If this
+// provider shows "error", the URL, headers or response schema likely
+// changed. Last verified: 2026-11-02.
 
 type claudeCredentials struct {
 	ClaudeAiOauth struct {
@@ -24,13 +30,37 @@ type claudeCredentials struct {
 }
 
 type claudeUsage struct {
-	FiveHour claudeWindow `json:"five_hour"`
-	SevenDay claudeWindow `json:"seven_day"`
+	FiveHour claudeWindow  `json:"five_hour"`
+	SevenDay claudeWindow  `json:"seven_day"`
+	Limits   []claudeLimit `json:"limits"`
 }
 
 type claudeWindow struct {
 	Utilization float64   `json:"utilization"`
 	ResetsAt    time.Time `json:"resets_at"`
+}
+
+type claudeLimit struct {
+	Kind     string    `json:"kind"`
+	Percent  int       `json:"percent"`
+	ResetsAt time.Time `json:"resets_at"`
+	Scope    *struct {
+		Model struct {
+			DisplayName string `json:"display_name"`
+		} `json:"model"`
+	} `json:"scope"`
+}
+
+// scopedWeekly finds the first "weekly_scoped" entry in u.Limits (the
+// per-model weekly limit, e.g. "Fable") and returns it as a claudeWindow
+// plus its display name. ok is false if there is no such entry.
+func scopedWeekly(u claudeUsage) (claudeWindow, string, bool) {
+	for _, l := range u.Limits {
+		if l.Kind == "weekly_scoped" && l.Scope != nil {
+			return claudeWindow{Utilization: float64(l.Percent), ResetsAt: l.ResetsAt}, l.Scope.Model.DisplayName, true
+		}
+	}
+	return claudeWindow{}, "", false
 }
 
 // parseClaudeUsage parses the /api/oauth/usage response body.

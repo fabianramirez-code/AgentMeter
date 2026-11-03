@@ -21,6 +21,7 @@ type providerState struct {
 	LastActivity time.Time `json:"last_activity"`
 	C1           cardState `json:"c1"`
 	C2           cardState `json:"c2"`
+	C3           cardState `json:"c3"` // optional third card (e.g. Claude's per-model weekly limit); empty Label means "no card"
 }
 
 // state is the full state.json contents. Never contains secrets - only

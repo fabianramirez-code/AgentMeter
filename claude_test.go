@@ -33,6 +33,57 @@ func TestParseClaudeUsage(t *testing.T) {
 	}
 }
 
+// realClaudeUsageBodyWithFable is a trimmed real response that also carries
+// the weekly_scoped per-model ("Fable") limit entry in `limits` (added
+// 2026-11-02; there is no top-level seven_day_fable key).
+const realClaudeUsageBodyWithFable = `{"five_hour":{"utilization":20.0,"resets_at":"2026-11-03T07:49:59.920264+00:00"},"seven_day":{"utilization":21.0,"resets_at":"2026-11-07T06:59:59.920282+00:00"},"seven_day_opus":null,"seven_day_sonnet":null,"limits":[{"kind":"session","group":"session","percent":20,"severity":"normal","resets_at":"2026-11-03T07:49:59.920264+00:00","scope":null,"is_active":false},{"kind":"weekly_all","group":"weekly","percent":21,"severity":"normal","resets_at":"2026-11-07T06:59:59.920282+00:00","scope":null,"is_active":false},{"kind":"weekly_scoped","group":"weekly","percent":22,"severity":"normal","resets_at":"2026-11-07T06:59:59.920435+00:00","scope":{"model":{"id":null,"display_name":"Fable"},"surface":null},"is_active":true}]}`
+
+func TestScopedWeeklyFound(t *testing.T) {
+	u, err := parseClaudeUsage([]byte(realClaudeUsageBodyWithFable))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	window, displayName, ok := scopedWeekly(u)
+	if !ok {
+		t.Fatal("expected ok=true, got false")
+	}
+	if displayName != "Fable" {
+		t.Errorf("displayName = %q, want %q", displayName, "Fable")
+	}
+	if window.Utilization != 22.0 {
+		t.Errorf("Utilization = %v, want 22.0", window.Utilization)
+	}
+	wantReset, _ := time.Parse(time.RFC3339Nano, "2026-11-07T06:59:59.920435+00:00")
+	if !window.ResetsAt.Equal(wantReset) {
+		t.Errorf("ResetsAt = %v, want %v", window.ResetsAt, wantReset)
+	}
+}
+
+func TestScopedWeeklyAbsent(t *testing.T) {
+	u, err := parseClaudeUsage([]byte(realClaudeUsageBody))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, _, ok := scopedWeekly(u)
+	if ok {
+		t.Fatal("expected ok=false when no weekly_scoped limit present")
+	}
+}
+
+func TestScopedWeeklyNullLimits(t *testing.T) {
+	u, err := parseClaudeUsage([]byte(`{"five_hour":{"utilization":1},"seven_day":{"utilization":1},"limits":null}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, _, ok := scopedWeekly(u)
+	if ok {
+		t.Fatal("expected ok=false when limits is null")
+	}
+}
+
 func TestParseClaudeUsageInvalidJSON(t *testing.T) {
 	_, err := parseClaudeUsage([]byte("not json"))
 	if err == nil {

@@ -20,6 +20,9 @@ type result struct {
 	C2Label string
 	C2Pct   int
 	C2Reset string
+	C3Label string
+	C3Pct   int
+	C3Reset string
 }
 
 func main() {
@@ -100,6 +103,9 @@ func addResult(out map[string]string, name string, r result) {
 	out[name+"_c2_label"] = r.C2Label
 	out[name+"_c2_pct"] = fmt.Sprintf("%d", r.C2Pct)
 	out[name+"_c2_reset"] = r.C2Reset
+	out[name+"_c3_label"] = r.C3Label
+	out[name+"_c3_pct"] = fmt.Sprintf("%d", r.C3Pct)
+	out[name+"_c3_reset"] = r.C3Reset
 }
 
 // runProvider updates st.Providers[name] in place (caching the result) and
@@ -187,6 +193,9 @@ func runClaude(now time.Time, credPath, procName, activityDir string, fallback t
 		C1:           cardState{Label: "SESSION (5H)", UsedPct: int(usage.FiveHour.Utilization), ResetAt: usage.FiveHour.ResetsAt},
 		C2:           cardState{Label: "WEEKLY (7D)", UsedPct: int(usage.SevenDay.Utilization), ResetAt: usage.SevenDay.ResetsAt},
 	}
+	if scoped, displayName, ok := scopedWeekly(usage); ok {
+		ps.C3 = cardState{Label: "WEEKLY " + strings.ToUpper(displayName) + " (7D)", UsedPct: int(scoped.Utilization), ResetAt: scoped.ResetsAt}
+	}
 	return ps, cardsToResult("ok", "", now, ps)
 }
 
@@ -252,7 +261,7 @@ func runGemini(now time.Time, procName, activityDir string, fallback time.Durati
 func cardsToResult(status, msg string, now time.Time, ps providerState) result {
 	r1 := withStatusSuffix(status, msg, formatReset(now, ps.C1.ResetAt))
 	r2 := withStatusSuffix(status, msg, formatReset(now, ps.C2.ResetAt))
-	return result{
+	r := result{
 		Status:  status,
 		Msg:     msg,
 		C1Label: ps.C1.Label,
@@ -262,6 +271,12 @@ func cardsToResult(status, msg string, now time.Time, ps providerState) result {
 		C2Pct:   effectiveUsedPct(now, ps.C2.ResetAt, ps.C2.UsedPct),
 		C2Reset: r2,
 	}
+	if ps.C3.Label != "" {
+		r.C3Label = ps.C3.Label
+		r.C3Pct = effectiveUsedPct(now, ps.C3.ResetAt, ps.C3.UsedPct)
+		r.C3Reset = withStatusSuffix(status, msg, formatReset(now, ps.C3.ResetAt))
+	}
+	return r
 }
 
 func withStatusSuffix(status, msg, reset string) string {

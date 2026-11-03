@@ -24,6 +24,37 @@ local function showProvider(skin, idx)
     skin:Bang('!SetVariable ActiveProviderColor "' .. skin:GetVariable(providerColorVars[idx + 1]) .. '"')
     skin:Bang("!WriteKeyValue Variables ActiveIndex " .. idx)
     skin:Bang('!WriteKeyValue Variables ActiveProviderName "' .. providers[idx + 1] .. '"')
+    -- Switching providers starts the cards area back at the top. MeasureHasC3
+    -- is updated synchronously so Card3/scrollbar visibility and MaxScroll
+    -- match the new provider right away (ShowMeterGroup Cards re-shows them).
+    skin:Bang("!SetVariable ScrollY 0")
+    skin:Bang("!UpdateMeasure MeasureHasC3")
+    skin:Bang("!UpdateMeterGroup Cards")
+    skin:Bang("!Redraw")
+end
+
+-- direction: 1 scrolls down, -1 scrolls up. Step is 64 unscaled px, clamped
+-- to [0, MaxScroll] (0 when the active provider has no third card).
+function Scroll(direction)
+    local skin = SKIN
+    local maxScroll = tonumber(skin:GetVariable("MaxScroll")) or 0
+    local cur = tonumber(skin:GetVariable("ScrollY")) or 0
+    local newVal = cur + (direction * 64)
+    if newVal < 0 then newVal = 0 end
+    if newVal > maxScroll then newVal = maxScroll end
+    skin:Bang("!SetVariable ScrollY " .. newVal)
+    skin:Bang("!UpdateMeterGroup Cards")
+    skin:Bang("!Redraw")
+end
+
+-- Clicking the scrollbar track/thumb jumps between top and bottom.
+function ScrollToggle()
+    local skin = SKIN
+    local maxScroll = tonumber(skin:GetVariable("MaxScroll")) or 0
+    local cur = tonumber(skin:GetVariable("ScrollY")) or 0
+    local newVal = 0
+    if cur < maxScroll then newVal = maxScroll end
+    skin:Bang("!SetVariable ScrollY " .. newVal)
     skin:Bang("!UpdateMeterGroup Cards")
     skin:Bang("!Redraw")
 end
