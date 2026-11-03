@@ -72,8 +72,8 @@ func main() {
 			r = result{Status: "off"}
 		} else {
 			r = runProvider(name, now, home, procs[name], fallback, st)
-			if fetched := st.Providers[name].LastAttempt.Equal(now); fetched || r.Status != "ok" {
-				log.Printf("%s: status=%s fetched=%v msg=%q", name, r.Status, fetched, r.Msg)
+			if apiCall := st.Providers[name].LastAttempt.Equal(now); apiCall || r.Status != "ok" {
+				log.Printf("%s: status=%s api_call=%v msg=%q", name, r.Status, apiCall, r.Msg)
 			}
 		}
 		addResult(out, name, r)
