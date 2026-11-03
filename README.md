@@ -141,6 +141,12 @@ Each provider fails independently.
 Every one of these call sites has a `NOTE:` comment in the source
 (`claude.go`, `codex.go`, `gemini.go`) saying what to check first.
 
+Every network fetch, non-ok status and fetch error (with the real error text)
+is appended to `@Resources\agentmeter.log` in the installed skin. Past 1 MB it
+is renamed to `agentmeter_<yyyyMMddHHmmss>.log` and a new one starts.
+Skin-side problems (meters not redrawing) show up in Rainmeter's own log
+instead: right-click the tray icon, About, Log.
+
 ## Project layout
 
 ```

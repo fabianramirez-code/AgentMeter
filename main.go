@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +33,18 @@ func main() {
 	providersFlag := flag.String("providers", "claude,codex,gemini", "comma-separated enabled providers")
 	procsFlag := flag.String("procs", "claude=claude.exe;codex=codex.exe;gemini=agy.exe", "provider=processName.exe pairs separated by ;")
 	fallbackMin := flag.Int("fallback", 20, "fallback poll interval in minutes")
+	logPath := flag.String("log", "", "append fetches and errors to this file (empty = stderr only)")
 	flag.Parse()
+
+	log.SetPrefix("agentmeter: ")
+	if *logPath != "" {
+		if f, err := openLog(*logPath, maxLogBytes, time.Now()); err != nil {
+			log.Println("cannot open log:", err)
+		} else {
+			defer f.Close()
+			log.SetOutput(io.MultiWriter(os.Stderr, f))
+		}
+	}
 
 	enabled := map[string]bool{}
 	for _, p := range strings.Split(*providersFlag, ",") {
@@ -45,7 +58,7 @@ func main() {
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "agentmeter: cannot resolve home dir:", err)
+		log.Println("cannot resolve home dir:", err)
 		home = "."
 	}
 
@@ -59,6 +72,9 @@ func main() {
 			r = result{Status: "off"}
 		} else {
 			r = runProvider(name, now, home, procs[name], fallback, st)
+			if fetched := st.Providers[name].LastAttempt.Equal(now); fetched || r.Status != "ok" {
+				log.Printf("%s: status=%s fetched=%v msg=%q", name, r.Status, fetched, r.Msg)
+			}
 		}
 		addResult(out, name, r)
 		// "1" when the provider's CLI process is running; drives the card dot.
@@ -69,18 +85,33 @@ func main() {
 	}
 
 	if err := saveState(*statePath, st); err != nil {
-		fmt.Fprintln(os.Stderr, "agentmeter: failed to save state:", err)
+		log.Println("failed to save state:", err)
 	}
 
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "agentmeter: failed to marshal output:", err)
+		log.Println("failed to marshal output:", err)
 		os.Exit(1)
 	}
 	if err := os.WriteFile(*outPath, data, 0o644); err != nil {
-		fmt.Fprintln(os.Stderr, "agentmeter: failed to write output:", err)
+		log.Println("failed to write output:", err)
 		os.Exit(1)
 	}
+}
+
+// maxLogBytes caps the log; past it the file is renamed with a timestamp
+// (agentmeter.log -> agentmeter_20261102234411.log) and a new one starts.
+// ponytail: rotated files are never pruned; only fetches/errors are logged
+// (~1 MB per month), add pruning if they pile up.
+const maxLogBytes = 1 << 20
+
+func openLog(path string, maxBytes int64, now time.Time) (*os.File, error) {
+	if fi, err := os.Stat(path); err == nil && fi.Size() > maxBytes {
+		ext := filepath.Ext(path)
+		rotated := strings.TrimSuffix(path, ext) + now.Format("_20060102150405") + ext
+		os.Rename(path, rotated) // best effort; on failure keep appending
+	}
+	return os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 }
 
 func parsePairs(s string) map[string]string {
@@ -180,6 +211,7 @@ func runClaude(now time.Time, credPath, procName, activityDir string, fallback t
 	cached.LastAttempt = now
 	usage, err := fetchClaudeUsage(creds.ClaudeAiOauth.AccessToken)
 	if err != nil {
+		log.Println("claude: fetch failed:", err)
 		if cached.LastFetch.IsZero() {
 			return cached, errorResult("error", "request failed: "+err.Error())
 		}
@@ -230,6 +262,7 @@ func runGemini(now time.Time, procName, activityDir string, fallback time.Durati
 	cached.LastAttempt = now
 	body, err := fetchGeminiModels(token)
 	if err != nil {
+		log.Println("gemini: fetch failed:", err)
 		if cached.LastFetch.IsZero() {
 			return cached, errorResult("error", "request failed: "+err.Error())
 		}
