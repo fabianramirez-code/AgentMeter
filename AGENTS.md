@@ -7,7 +7,9 @@ Read `docs/design.md` before changing the skin or the poll logic.
 - Install with `.\build.ps1`, then Refresh in Rainmeter. Never hand-copy the
   `.ini`: Rainmeter needs UTF-16 LE + BOM, the repo keeps UTF-8.
 - Refresh chain is `MeasureClock -> MeasureRun -> MeasureData.FinishAction`.
-  `MeasureRun.FinishAction` must contain ONLY `[!CommandMeasure MeasureData "Update"]`.
+  `MeasureRun.FinishAction` must contain ONLY `[!UpdateMeasure MeasureData]`.
+  `!CommandMeasure MeasureData "Update"` does NOT re-fetch (verified with
+  WebParser `Debug=2`); the skin froze after the first load because of it.
   Every `!UpdateMeasureGroup DataChildren` / `!UpdateMeterGroup Cards` / `!Redraw`
   that depends on fresh data goes in `MeasureData.FinishAction`. WebParser parses
   asynchronously; updating earlier shows stale values until a manual Refresh.

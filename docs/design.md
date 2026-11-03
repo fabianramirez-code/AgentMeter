@@ -59,12 +59,21 @@ every run:
 MeasureClock (Calc, UpdateDivider=60)
   -> [!CommandMeasure MeasureRun "Run"]            runs agentmeter.exe, writes data.json
 MeasureRun.FinishAction
-  -> [!CommandMeasure MeasureData "Update"]         ONLY this bang, nothing else
+  -> [!UpdateMeasure MeasureData]                   ONLY this bang, nothing else
 MeasureData.FinishAction   (fires when the parse has finished)
   -> [!UpdateMeasureGroup DataChildren][!UpdateMeterGroup Cards][!Redraw]
 ```
 
-Why the split: WebParser `Update` parses `data.json` in a background thread.
+`MeasureClock` also fires on its first update, so it is the load-time run too;
+an extra `OnRefreshAction` Run would start a second exe at the same time
+(RunCommand logs "Error 101: Program still running").
+
+Use `!UpdateMeasure MeasureData`, not `!CommandMeasure MeasureData "Update"`:
+the latter does not trigger a fetch (checked with `Debug=2`: no `Fetching:`
+line), so the skin showed the load-time values forever. `UpdateRate=1` makes
+every `!UpdateMeasure` re-read the file.
+
+Why the split: WebParser parses `data.json` in a background thread.
 If `MeasureRun.FinishAction` also updates `DataChildren`/`Cards`, those bangs
 run before the parse is done and read the previous values. The children have
 `UpdateDivider=-1`, so nothing re-reads them until a manual Refresh: the skin
