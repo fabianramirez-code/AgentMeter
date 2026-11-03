@@ -89,3 +89,41 @@ Two cadences, easy to confuse when "it does not update":
 | network fetch per provider | min 5 min (`minFetchInterval`), fallback `FallbackMinutes` (20) |
 
 Percentages only change when a fetch happens and usage actually moved.
+
+## macOS and Linux
+
+Same collector, same `data.json`. OS-specific code lives behind build tags:
+`win.go`, `darwin.go` and `linux.go` each provide `isProcessRunning`,
+`readCredentialBlob`, `readClaudeCredentials` and `defaultProcs`;
+`newestModTime` (`activity.go`) and `decodeKeyringSecret` (`keyring.go`) are
+portable.
+
+| | macOS | Linux |
+|---|---|---|
+| Processes | `sysctl kern.proc.all`, first 16 bytes (`MAXCOMLEN`) | `/proc/<pid>/comm`, first 15 bytes (`TASK_COMM_LEN`) |
+| Credentials | `/usr/bin/security find-generic-password -w -s service -a account` | `secret-tool lookup service S username A` |
+| Claude | keychain first, then the file | the file |
+
+A Windows target `"service:account"` maps to those service/account pairs,
+which is how go-keyring names items on each OS; its `go-keyring-base64:` /
+`go-keyring-encoded:` prefixes are decoded.
+
+Front ends (`unix/`), no Rainmeter refresh chain involved:
+
+```
+SwiftBar / Argos / Kargos (agentmeter.1m.sh) ─ run.sh xbar   ─┐
+Waybar custom module ───────────────────────── run.sh waybar ─┤
+Conky execpi ───────────────────────────────── run.sh conky  ─┼─> ~/.agentmeter/run.sh
+Übersicht (index.jsx) ──────────────────────── run.sh        ─┘     skip if data.json < 50 s old
+                                                                    mkdir lock: one agentmeter at a time
+                                                                    agentmeter -render <format>  (or cat data.json)
+```
+
+The lock matters when several front ends are installed: without it two runs
+could read the same `state.json`, both pass `shouldFetch` and double the API
+calls. A reader that finds the lock taken waits (max ~5 s) so it never reads
+a half-written `data.json`.
+
+`-render` (`render.go`) only reads `data.json`; it never collects or touches
+the network. Keep provider colors and the 60/85 % traffic light in sync with
+the skin `[Variables]` and the Übersicht widget.

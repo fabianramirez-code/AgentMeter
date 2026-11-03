@@ -24,3 +24,11 @@ Read `docs/design.md` before changing the skin or the poll logic.
   attempts, fallback `-fallback` minutes. Do not poll on every run; the Claude
   endpoint answers 429.
 - `go test ./...` must pass; `build.ps1` runs it before building.
+
+## macOS / Linux (`unix/`)
+
+- Install with `unix/install.sh`; it detects the OS and desktop. All front
+  ends go through `unix/run.sh` (lock + 50 s throttle); never call
+  `agentmeter` directly from a front end.
+- Menu/panel text comes from `agentmeter -render xbar|waybar|conky`
+  (`render.go`, tested); keep formatting logic there, not in front-end scripts.
