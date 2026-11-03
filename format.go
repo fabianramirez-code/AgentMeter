@@ -13,6 +13,7 @@ func formatReset(now, resetAt time.Time) string {
 	if resetAt.IsZero() || !resetAt.After(now) {
 		return ""
 	}
+	resetAt = resetAt.Local() // APIs may return UTC; show the user's clock
 	d := resetAt.Sub(now)
 	if d < 24*time.Hour {
 		h := int(d.Hours())

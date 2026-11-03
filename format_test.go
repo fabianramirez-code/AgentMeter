@@ -5,7 +5,27 @@ import (
 	"time"
 )
 
+// withLocal pins time.Local for the duration of a test.
+func withLocal(t *testing.T, loc *time.Location) {
+	old := time.Local
+	time.Local = loc
+	t.Cleanup(func() { time.Local = old })
+}
+
+// The Claude API returns reset times in UTC ("...Z"); the card must show
+// the user's local clock, not the UTC one.
+func TestFormatResetUsesLocalClock(t *testing.T) {
+	withLocal(t, time.FixedZone("CST", -6*3600))
+	now := time.Date(2026, 11, 3, 5, 36, 0, 0, time.UTC)     // 23:36 local
+	resetAt := time.Date(2026, 11, 3, 7, 49, 0, 0, time.UTC) // 01:49 local
+
+	if got, want := formatReset(now, resetAt), "resets 1:49am in 2h 13m"; got != want {
+		t.Errorf("formatReset() = %q, want %q", got, want)
+	}
+}
+
 func TestFormatReset(t *testing.T) {
+	withLocal(t, time.UTC)
 	now := time.Date(2026, 11, 1, 2, 21, 0, 0, time.UTC)
 
 	tests := []struct {
