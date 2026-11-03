@@ -96,6 +96,50 @@ system `PATH` change). Then they run `go test ./...` and build
 - Process names are configurable in `AgentMeter.ini` (`ProcClaude`,
   `ProcCodex`, `ProcGemini`).
 
+## macOS and Linux
+
+The collector also builds on macOS and Linux. Rainmeter is Windows-only, so
+there are other front ends; one installer picks the ones that fit:
+
+```bash
+unix/install.sh
+```
+
+| System | Front end | What you get |
+|---|---|---|
+| macOS | [SwiftBar](https://swiftbar.app/) | menu bar item: highest usage %, traffic-light colored; the menu lists every card |
+| macOS | [Übersicht](https://tracesof.net/uebersicht/) | desktop widget with the skin's cards; ▲ / ▼ switch providers |
+| GNOME | [Argos](https://extensions.gnome.org/extension/1176/argos/) | top bar item, same menu as SwiftBar |
+| KDE Plasma | [Kargos](https://github.com/lipido/kargos) | panel item, same menu as SwiftBar |
+| Hyprland, Sway, ... | [Waybar](https://github.com/Alexays/Waybar) | bar module: highest % in the bar, cards in the tooltip (see `unix/waybar/README.md`) |
+| any other (XFCE, Cinnamon, i3, ...) | [Conky](https://github.com/brndnmtthws/conky) | desktop panel with every provider stacked, started at login |
+
+The installer runs `go test ./...`, builds `agentmeter` into `~/.agentmeter`
+(Go from `PATH`, or a checksum-verified project-local copy in `./go`), reads
+`XDG_CURRENT_DESKTOP` on Linux, installs what it can and prints what is left
+to do by hand (e.g. installing the Argos extension, or adding the Waybar
+module to your config, which it never edits). On macOS, install SwiftBar
+and/or Übersicht and launch each once before running it (SwiftBar asks for a
+plugin folder).
+
+Every front end calls `~/.agentmeter/run.sh`, which runs `agentmeter` at most
+once per 50 s and one at a time, so several front ends never multiply the API
+calls. Menus and panels are rendered by `agentmeter -render xbar|waybar|conky`,
+so none needs jq or Python. Extra flags (e.g. `-providers claude,codex`) go in
+`~/.agentmeter/flags`; data, state and log live in the same folder.
+
+Differences from Windows:
+
+| Provider | macOS | Linux |
+|---|---|---|
+| Claude | login keychain, service `Claude Code-credentials` (falls back to `~/.claude/.credentials.json`) | `~/.claude/.credentials.json`, as on Windows |
+| Codex | same session files as on Windows | same session files as on Windows |
+| Gemini | login keychain, service `gemini`, account `antigravity` (**not yet verified**) | Secret Service via `secret-tool` (`libsecret-tools`), service `gemini`, username `antigravity` (**not yet verified**) |
+
+macOS may ask once whether `security` can read each keychain item. Process
+names default to `claude`, `codex` and `agy` (no `.exe`); a Claude Code
+installed through npm runs as `node` and is not detected as running.
+
 ## Network usage
 
 Codex is read from a local file. Claude and Gemini need one HTTPS request
@@ -151,12 +195,15 @@ instead: right-click the tray icon, About, Log.
 
 ```
 main.go, claude.go, codex.go, gemini.go   collector (one file per provider)
-pollgate.go, state.go, format.go, win.go  polling rules, cache, reset text, Windows APIs
+pollgate.go, state.go, format.go          polling rules, cache, reset text
+win.go, darwin.go, linux.go               OS APIs (processes, credentials)
+activity.go, keyring.go, render.go        log mtimes, keyring decoding, Unix front-end output
 *_test.go                                 go test ./...
 skin/AgentMeter/AgentMeter.ini            Rainmeter skin (UTF-8 here, UTF-16 when installed)
 skin/AgentMeter/@Resources/Scripts/       provider cycling and settings panel (Lua)
 build.ps1                                 test, build, install (optionally portable)
-go/, rainmeter/                           local toolchains downloaded by build.ps1 (git-ignored)
+unix/                                     install.sh, run.sh and the macOS/Linux front ends
+go/, rainmeter/                           local toolchains downloaded by the installers (git-ignored)
 docs/design.md                            design notes
 ```
 
