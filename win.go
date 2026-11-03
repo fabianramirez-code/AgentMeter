@@ -4,14 +4,21 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
-	"path/filepath"
+	"os"
 	"strings"
-	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
+
+// defaultProcs is the -procs default: the CLI executable names on Windows.
+const defaultProcs = "claude=claude.exe;codex=codex.exe;gemini=agy.exe"
+
+// readClaudeCredentials returns the Claude Code OAuth JSON. On Windows the
+// CLI keeps it in a plain file. Thin OS I/O, untested.
+func readClaudeCredentials(credPath string) ([]byte, error) {
+	return os.ReadFile(credPath)
+}
 
 // isProcessRunning reports whether a process with the given executable name
 // (e.g. "claude.exe") is currently running. Thin OS I/O, untested.
@@ -38,26 +45,6 @@ func isProcessRunning(name string) bool {
 			return false
 		}
 	}
-}
-
-// newestModTime walks dir recursively and returns the newest file ModTime,
-// or the zero time if dir does not exist or is empty. Thin OS I/O, untested.
-func newestModTime(dir string) time.Time {
-	var newest time.Time
-	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		if info.ModTime().After(newest) {
-			newest = info.ModTime()
-		}
-		return nil
-	})
-	return newest
 }
 
 // advapi32 CredReadW/CredFree, called directly since x/sys/windows has no

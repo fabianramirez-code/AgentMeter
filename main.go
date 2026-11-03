@@ -31,7 +31,7 @@ func main() {
 	outPath := flag.String("out", "data.json", "path to write data.json")
 	statePath := flag.String("state", "state.json", "path to the state cache")
 	providersFlag := flag.String("providers", "claude,codex,gemini", "comma-separated enabled providers")
-	procsFlag := flag.String("procs", "claude=claude.exe;codex=codex.exe;gemini=agy.exe", "provider=processName.exe pairs separated by ;")
+	procsFlag := flag.String("procs", defaultProcs, "provider=processName pairs separated by ;")
 	fallbackMin := flag.Int("fallback", 20, "fallback poll interval in minutes")
 	logPath := flag.String("log", "", "append fetches and errors to this file (empty = stderr only)")
 	flag.Parse()
@@ -180,7 +180,7 @@ func runCodex(now time.Time, sessionsDir string, cached providerState) (provider
 }
 
 func runClaude(now time.Time, credPath, procName, activityDir string, fallback time.Duration, cached providerState) (providerState, result) {
-	raw, err := os.ReadFile(credPath)
+	raw, err := readClaudeCredentials(credPath)
 	if err != nil {
 		return cached, errorResult("error", "not logged into Claude")
 	}
