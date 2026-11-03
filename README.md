@@ -91,8 +91,8 @@ system `PATH` change). Then they run `go test ./...` and build
   size (0.75x-2x). The panel stays open until you click **Done**.
 - **Card color** is a usage traffic light: gray-white below 60 %, yellow from
   60 %, red from 85 %. Change `WarnPct` / `CritPct` in `AgentMeter.ini`.
-- **Dot**: green while that provider's CLI process is running, gray
-  otherwise. Hover it for "Active" / "Not active".
+- **Dot** (top-right of each card): green means that provider's CLI
+  process is running right now; gray means it is not.
 - Process names are configurable in `AgentMeter.ini` (`ProcClaude`,
   `ProcCodex`, `ProcGemini`).
 
