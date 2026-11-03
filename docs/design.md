@@ -52,3 +52,31 @@ every run:
 - Settings panel: provider checkboxes, transparency −/+, size −/+. Persisted with `!WriteKeyValue`.
 - Cards: colored thin border, glowing dot, big %, rounded progress bar, reset subtext.
 - All config (enabled providers, process names, interval) lives in the skin `[Variables]` and is passed to the exe as flags.
+
+### Refresh chain (do not reorder)
+
+```
+MeasureClock (Calc, UpdateDivider=60)
+  -> [!CommandMeasure MeasureRun "Run"]            runs agentmeter.exe, writes data.json
+MeasureRun.FinishAction
+  -> [!CommandMeasure MeasureData "Update"]         ONLY this bang, nothing else
+MeasureData.FinishAction   (fires when the parse has finished)
+  -> [!UpdateMeasureGroup DataChildren][!UpdateMeterGroup Cards][!Redraw]
+```
+
+Why the split: WebParser `Update` parses `data.json` in a background thread.
+If `MeasureRun.FinishAction` also updates `DataChildren`/`Cards`, those bangs
+run before the parse is done and read the previous values. The children have
+`UpdateDivider=-1`, so nothing re-reads them until a manual Refresh: the skin
+looks frozen while the exe keeps writing fresh data. Anything that must react
+to new data (new child measures, new meters, Lua calls) hangs off
+`MeasureData.FinishAction`, never off `MeasureRun.FinishAction`.
+
+Two cadences, easy to confuse when "it does not update":
+
+| What | Every |
+|---|---|
+| exe run + skin redraw + "resets in" countdown | 60 s (`MeasureClock`) |
+| network fetch per provider | min 5 min (`minFetchInterval`), fallback `FallbackMinutes` (20) |
+
+Percentages only change when a fetch happens and usage actually moved.
