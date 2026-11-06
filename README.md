@@ -68,7 +68,8 @@ process name. It checks, in order: `%PI_CODING_AGENT_DIR%` (if set),
   run the `codex` CLI, the newer value wins.
 - **Gemini**: not supported through Pi, which has no Antigravity login; the
   card still needs the `agy` CLI login.
-- **Polling and the dot**: a Pi session file (`sessions\**\*.jsonl`) written
+- **Polling and the dot**: a Pi session file (`sessions\**\*.jsonl` or
+  `gentle-agents\sessions\**\*.jsonl`, including subagents) written
   in the last 5 minutes counts as activity for the provider of its latest
   message (`anthropic` -> Claude, `openai*` -> Codex, `google*` -> Gemini):
   that card's dot turns green and it is polled every 5 minutes instead of
@@ -123,7 +124,7 @@ system `PATH` change). Then they run `go test ./...` and build
 - **Dot** (top-right of each card): green means that provider's CLI
   process is running right now, or a gentle-shell session used that
   provider in the last 5 minutes (`anthropic` -> Claude, `openai*` -> Codex,
-  `google*` -> Gemini, read from the Pi agent `sessions` folder); gray
+  `google*` -> Gemini, read from the Pi agent `sessions` and `gentle-agents/sessions` folders); gray
   means neither.
 - Process names are configurable in `AgentMeter.ini` (`ProcClaude`,
   `ProcCodex`, `ProcGemini`).

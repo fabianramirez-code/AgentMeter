@@ -51,7 +51,7 @@ every run:
 - Header: `AgentMeter / <Provider>`, ▲ ▼ cycle enabled providers, ⚙ toggles an in-skin settings panel.
 - Settings panel: provider checkboxes, transparency −/+, size −/+. Persisted with `!WriteKeyValue`.
 - Cards: colored thin border, glowing dot, big %, rounded progress bar, reset subtext.
-- Dot (`<provider>_active`): CLI process running, or a Pi / gentle-shell session file (`<pi agent dir>/sessions/**/*.jsonl`) written in the last 5 min whose latest `"provider"` maps to the card (`piactivity.go`). gentle-shell runs every model from one `node.exe`, so the process name cannot tell providers apart.
+- Dot (`<provider>_active`): CLI process running, or a Pi / gentle-shell session file (`<pi agent dir>/sessions/**/*.jsonl` or `<pi agent dir>/gentle-agents/sessions/**/*.jsonl`, including subagents) written in the last 5 min whose latest `"provider"` maps to the card (`piactivity.go`). gentle-shell runs every model from one `node.exe`, so the process name cannot tell providers apart.
 - All config (enabled providers, process names, interval) lives in the skin `[Variables]` and is passed to the exe as flags.
 
 ### Refresh chain (do not reorder)

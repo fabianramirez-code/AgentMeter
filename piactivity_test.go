@@ -37,6 +37,24 @@ func TestPiActiveProviders(t *testing.T) {
 	}
 }
 
+func TestPiSessionDirsActivity(t *testing.T) {
+	now := time.Date(2026, 11, 6, 16, 0, 0, 0, time.UTC)
+	root := t.TempDir()
+	writeSession(t, root, "sessions/parent/session.jsonl", `{"provider":"anthropic"}`+"\n", now)
+	writeSession(t, root, "gentle-agents/sessions/child/session.jsonl", `{"provider":"openai-codex"}`+"\n", now.Add(-time.Minute))
+	writeSession(t, root, "gentle-agents/sessions/old/session.jsonl", `{"provider":"google"}`+"\n", now.Add(-6*time.Minute))
+
+	active := map[string]bool{}
+	for _, dir := range piSessionDirs([]string{root, filepath.Join(root, "missing")}) {
+		for card := range piActiveProviders(dir, now, 5*time.Minute) {
+			active[card] = true
+		}
+	}
+	if len(active) != 2 || !active["claude"] || !active["codex"] {
+		t.Fatalf("got %v, want only claude parent and codex child", active)
+	}
+}
+
 func TestPiActiveProvidersMissingDir(t *testing.T) {
 	if got := piActiveProviders(filepath.Join(t.TempDir(), "nope"), time.Now(), 5*time.Minute); len(got) != 0 {
 		t.Errorf("got %v, want empty", got)

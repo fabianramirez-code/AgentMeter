@@ -77,7 +77,7 @@ func main() {
 	// cards whose provider a Pi / gentle-shell session used in the last few minutes
 	piDirs := piAgentDirs(home)
 	piActive := map[string]bool{}
-	for _, dir := range piPaths(piDirs, "sessions") {
+	for _, dir := range piSessionDirs(piDirs) {
 		for card := range piActiveProviders(dir, now, piActiveWindow) {
 			piActive[card] = true
 		}

@@ -91,6 +91,13 @@ func piAgentDirs(home string) []string {
 	return dirs
 }
 
+// piSessionDirs includes both ordinary Pi sessions and persisted Gentle Agents
+// child sessions. Keep auth lookup limited to the agent directories themselves.
+func piSessionDirs(dirs []string) []string {
+	out := piPaths(dirs, "sessions")
+	return append(out, piPaths(dirs, filepath.Join("gentle-agents", "sessions"))...)
+}
+
 // piPaths joins name onto every Pi agent dir.
 func piPaths(dirs []string, name string) []string {
 	out := make([]string, len(dirs))
