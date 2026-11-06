@@ -74,21 +74,25 @@ func main() {
 	now := time.Now()
 	st := loadState(*statePath)
 
+	// cards whose provider a gentle-shell session used in the last few minutes
+	piActive := piActiveProviders(filepath.Join(home, ".gentle-shell", "agent", "sessions"), now, piActiveWindow)
+
 	out := map[string]string{}
 	for _, name := range []string{"claude", "codex", "gemini"} {
 		var r result
 		if !enabled[name] {
 			r = result{Status: "off"}
 		} else {
-			r = runProvider(name, now, home, procs[name], fallback, st)
+			r = runProvider(name, now, home, procs[name], fallback, st, piActive)
 			if apiCall := st.Providers[name].LastAttempt.Equal(now); apiCall || r.Status != "ok" {
 				log.Printf("%s: status=%s api_call=%v msg=%q", name, r.Status, apiCall, r.Msg)
 			}
 		}
 		addResult(out, name, r)
-		// "1" when the provider's CLI process is running; drives the card dot.
+		// "1" when the provider's CLI process is running or a gentle-shell
+		// session just used it; drives the card dot.
 		out[name+"_active"] = "0"
-		if enabled[name] && isProcessRunning(procs[name]) {
+		if enabled[name] && (isProcessRunning(procs[name]) || piActive[name]) {
 			out[name+"_active"] = "1"
 		}
 	}
@@ -107,6 +111,10 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// piActiveWindow is how recently a gentle-shell session must have been
+// written to light its provider's card dot.
+const piActiveWindow = 5 * time.Minute
 
 // maxLogBytes caps the log; past it the file is renamed with a timestamp
 // (agentmeter.log -> agentmeter_20261102234411.log) and a new one starts.
@@ -150,16 +158,16 @@ func addResult(out map[string]string, name string, r result) {
 
 // runProvider updates st.Providers[name] in place (caching the result) and
 // returns the row to render this run. Each provider fails independently.
-func runProvider(name string, now time.Time, home, procName string, fallback time.Duration, st state) result {
+func runProvider(name string, now time.Time, home, procName string, fallback time.Duration, st state, piActive map[string]bool) result {
 	cached := st.Providers[name]
 
 	switch name {
 	case "codex":
-		ps, r := runCodex(now, filepath.Join(home, ".codex", "sessions"), cached)
+		ps, r := runCodex(now, filepath.Join(home, ".codex", "sessions"), filepath.Join(home, ".gentle-shell", "agent", "auth.json"), procName, piActive["codex"], fallback, cached)
 		st.Providers[name] = ps
 		return r
 	case "claude":
-		ps, r := runClaude(now, filepath.Join(home, ".claude", ".credentials.json"), procName, filepath.Join(home, ".claude", "projects"), fallback, cached)
+		ps, r := runClaude(now, filepath.Join(home, ".claude", ".credentials.json"), filepath.Join(home, ".gentle-shell", "agent", "auth.json"), procName, filepath.Join(home, ".claude", "projects"), filepath.Join(home, ".gentle-shell", "agent", "sessions"), fallback, cached)
 		st.Providers[name] = ps
 		return r
 	case "gemini":
@@ -171,42 +179,94 @@ func runProvider(name string, now time.Time, home, procName string, fallback tim
 	}
 }
 
-func runCodex(now time.Time, sessionsDir string, cached providerState) (providerState, result) {
-	rl, err := findLatestRateLimits(sessionsDir)
-	if err != nil {
-		if cached.LastFetch.IsZero() {
-			return cached, errorResult("error", "no Codex session with rate_limits found")
+// runCodex shows the newest of: the Codex CLI rollout files, or the usage
+// endpoint polled with the gentle-shell (Pi) ChatGPT login. The endpoint is
+// gated like Claude's: at least minFetchInterval apart, and only while codex
+// runs or a gentle-shell session uses an OpenAI model, else every fallback.
+func runCodex(now time.Time, sessionsDir, piAuthPath, procName string, piActive bool, fallback time.Duration, cached providerState) (providerState, result) {
+	fetchFailed := false
+	tok, hasToken := readPiCodexToken(now, piAuthPath)
+	if hasToken {
+		running := piActive || isProcessRunning(procName)
+		if shouldFetch(now, cached.LastAttempt, cached.LastAttempt, minFetchInterval, fallback, running, true) {
+			cached.LastAttempt = now
+			if rl, err := fetchCodexUsage(tok); err != nil {
+				log.Println("codex: fetch failed:", err)
+				fetchFailed = true
+			} else {
+				cached = codexState(rl, now, now)
+			}
 		}
+	}
+
+	rl, rolloutMod, rlErr := latestRolloutSnapshot(sessionsDir)
+	if rlErr == nil && rolloutMod.After(cached.LastFetch) {
+		cached = codexState(rl, rolloutMod, cached.LastAttempt)
+		fetchFailed = false
+	}
+
+	switch {
+	case cached.LastFetch.IsZero() && fetchFailed:
+		return cached, errorResult("error", "request failed, no Codex session found")
+	case cached.LastFetch.IsZero():
+		return cached, errorResult("error", "no Codex session with rate_limits found")
+	case fetchFailed:
+		return cached, cardsToResult("stale", "request failed, cached values", now, cached)
+	case rlErr != nil && !hasToken:
 		return cached, cardsToResult("stale", "no Codex session, cached values", now, cached)
 	}
-
-	ps := providerState{
-		LastFetch: now,
-		C1:        cardState{Label: "SESSION (5H)", UsedPct: int(rl.PrimaryPct), ResetAt: rl.PrimaryReset},
-		C2:        cardState{Label: "WEEKLY (7D)", UsedPct: int(rl.SecondaryPct), ResetAt: rl.SecondaryReset},
-	}
-	return ps, cardsToResult("ok", "", now, ps)
+	return cached, cardsToResult("ok", "", now, cached)
 }
 
-func runClaude(now time.Time, credPath, procName, activityDir string, fallback time.Duration, cached providerState) (providerState, result) {
-	raw, err := readClaudeCredentials(credPath)
-	if err != nil {
-		return cached, errorResult("error", "not logged into Claude")
+// codexState builds the two Codex cards; fetched is when the values were current.
+func codexState(rl codexRateLimits, fetched, attempt time.Time) providerState {
+	return providerState{
+		LastFetch:   fetched,
+		LastAttempt: attempt,
+		C1:          cardState{Label: "SESSION (5H)", UsedPct: int(rl.PrimaryPct), ResetAt: rl.PrimaryReset},
+		C2:          cardState{Label: "WEEKLY (7D)", UsedPct: int(rl.SecondaryPct), ResetAt: rl.SecondaryReset},
 	}
-	var creds claudeCredentials
-	if err := json.Unmarshal(raw, &creds); err != nil || creds.ClaudeAiOauth.AccessToken == "" {
-		return cached, errorResult("error", "could not read Claude credentials")
-	}
+}
 
-	if isTokenExpired(now, creds.ClaudeAiOauth.ExpiresAt) {
-		if cached.LastFetch.IsZero() {
-			return cached, errorResult("stale", "login expired, open claude")
+// runClaude uses the Claude Code token, or the gentle-shell (Pi) /login token
+// when Claude Code's is missing or expired. Activity in either tool's session
+// folder counts; gentle-shell runs as node.exe, so a changed Pi session file
+// stands in for the process check.
+func runClaude(now time.Time, credPath, piAuthPath, procName, activityDir, piSessionsDir string, fallback time.Duration, cached providerState) (providerState, result) {
+	var candidates []claudeToken
+	noTokenMsg := "not logged into Claude"
+	if raw, err := readClaudeCredentials(credPath); err == nil {
+		var creds claudeCredentials
+		if json.Unmarshal(raw, &creds) == nil && creds.ClaudeAiOauth.AccessToken != "" {
+			candidates = append(candidates, claudeToken{AccessToken: creds.ClaudeAiOauth.AccessToken, ExpiresAt: creds.ClaudeAiOauth.ExpiresAt})
+		} else {
+			noTokenMsg = "could not read Claude credentials"
 		}
-		return cached, cardsToResult("stale", "login expired, open claude", now, cached)
+	}
+	if raw, err := os.ReadFile(piAuthPath); err == nil {
+		if tok, err := parsePiAnthropicToken(raw); err == nil {
+			candidates = append(candidates, tok)
+		}
+	}
+	if len(candidates) == 0 {
+		return cached, errorResult("error", noTokenMsg)
 	}
 
-	processRunning := isProcessRunning(procName)
+	token, ok := pickClaudeToken(now, candidates)
+	if !ok {
+		const msg = "login expired, open claude or gentle-shell"
+		if cached.LastFetch.IsZero() {
+			return cached, errorResult("stale", msg)
+		}
+		return cached, cardsToResult("stale", msg, now, cached)
+	}
+
+	piActivity := newestModTime(piSessionsDir)
+	processRunning := isProcessRunning(procName) || piActivity.After(cached.LastActivity)
 	activity := newestModTime(activityDir)
+	if piActivity.After(activity) {
+		activity = piActivity
+	}
 	activityChanged := !activity.Equal(cached.LastActivity) && !activity.IsZero()
 
 	if !shouldFetch(now, cached.LastAttempt, cached.LastFetch, minFetchInterval, fallback, processRunning, activityChanged) {
@@ -218,7 +278,7 @@ func runClaude(now time.Time, credPath, procName, activityDir string, fallback t
 	}
 
 	cached.LastAttempt = now
-	usage, err := fetchClaudeUsage(creds.ClaudeAiOauth.AccessToken)
+	usage, err := fetchClaudeUsage(token.AccessToken)
 	if err != nil {
 		log.Println("claude: fetch failed:", err)
 		if cached.LastFetch.IsZero() {

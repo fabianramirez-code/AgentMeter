@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -80,5 +81,41 @@ func TestOpenLogAppendsWhenSmall(t *testing.T) {
 
 	if cur, _ := os.ReadFile(path); string(cur) != "a\nb\n" {
 		t.Errorf("log = %q, want appended", cur)
+	}
+}
+
+func TestRunClaudeTokenSelection(t *testing.T) {
+	now := time.UnixMilli(1_000_000)
+	d := t.TempDir()
+	cp, pp := filepath.Join(d, "c.json"), filepath.Join(d, "a.json")
+	run := func(cc, pi string) result {
+		os.Remove(cp)
+		os.Remove(pp)
+		if cc != "" {
+			os.WriteFile(cp, []byte(cc), 0o600)
+		}
+		if pi != "" {
+			os.WriteFile(pp, []byte(pi), 0o600)
+		}
+		_, r := runClaude(now, cp, pp, "nope", filepath.Join(d, "p"), filepath.Join(d, "s"), time.Hour, providerState{})
+		return r
+	}
+	if r := run(`{"claudeAiOauth":{"accessToken":"SECRET1","expiresAt":10}}`, `{"anthropic":{"type":"oauth","access":"SECRET2","expires":10}}`); r.Status != "stale" || r.Msg != "login expired, open claude or gentle-shell" || strings.Contains(r.C1Reset, "SECRET") {
+		t.Errorf("both expired: %+v", r)
+	}
+	if r := run("", ""); r.Status != "error" || r.Msg != "not logged into Claude" {
+		t.Errorf("none: %+v", r)
+	}
+	if r := run("", `{"anthropic":{"type":"api_key","key":"SECRET3"}}`); r.Msg != "not logged into Claude" {
+		t.Errorf("api_key only: %+v", r)
+	}
+	// pre-existing behavior: unreadable Claude Code credentials keep their message
+	if r := run(`not json`, ""); r.Status != "error" || r.Msg != "could not read Claude credentials" {
+		t.Errorf("malformed claude creds: %+v", r)
+	}
+	pi := `{"anthropic":{"type":"oauth","access":"x","expires":10}}`
+	run("", pi)
+	if after, _ := os.ReadFile(pp); string(after) != pi {
+		t.Error("auth.json mutated")
 	}
 }

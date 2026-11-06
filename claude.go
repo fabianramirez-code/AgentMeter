@@ -72,6 +72,43 @@ func parseClaudeUsage(body []byte) (claudeUsage, error) {
 	return u, nil
 }
 
+// claudeToken is one Claude subscription OAuth access token and its expiry.
+type claudeToken struct {
+	AccessToken string
+	ExpiresAt   int64 // unix millis
+}
+
+// parsePiAnthropicToken reads the Anthropic subscription token that
+// gentle-shell (Pi) stores in ~/.gentle-shell/agent/auth.json after /login:
+// {"anthropic":{"type":"oauth","access":"...","expires":<unix millis>}}.
+// Pi refreshes it itself while in use; we only read it. An api_key entry is
+// rejected: the usage endpoint answers 400 for API organizations.
+func parsePiAnthropicToken(raw []byte) (claudeToken, error) {
+	var auth map[string]struct {
+		Type    string `json:"type"`
+		Access  string `json:"access"`
+		Expires int64  `json:"expires"`
+	}
+	if err := json.Unmarshal(raw, &auth); err != nil {
+		return claudeToken{}, fmt.Errorf("parse pi auth: %w", err)
+	}
+	a, ok := auth["anthropic"]
+	if !ok || a.Type != "oauth" || a.Access == "" {
+		return claudeToken{}, fmt.Errorf("pi auth has no anthropic oauth login")
+	}
+	return claudeToken{AccessToken: a.Access, ExpiresAt: a.Expires}, nil
+}
+
+// pickClaudeToken returns the first candidate that has not expired.
+func pickClaudeToken(now time.Time, candidates []claudeToken) (claudeToken, bool) {
+	for _, c := range candidates {
+		if c.AccessToken != "" && !isTokenExpired(now, c.ExpiresAt) {
+			return c, true
+		}
+	}
+	return claudeToken{}, false
+}
+
 // isTokenExpired reports whether a millisecond-epoch expiry has passed.
 func isTokenExpired(now time.Time, expiresAtMillis int64) bool {
 	return now.UnixMilli() >= expiresAtMillis

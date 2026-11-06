@@ -41,8 +41,8 @@ simply show an error message on their cards; the others keep working.
 
 | Provider | Log in with | Where AgentMeter reads it |
 |---|---|---|
-| Claude | Claude Code (`claude`) | `%USERPROFILE%\.claude\.credentials.json` |
-| Codex | Codex CLI (`codex`) | `%USERPROFILE%\.codex\sessions\...\rollout-*.jsonl` |
+| Claude | Claude Code (`claude`), or gentle-shell `/login` with a Claude subscription (used when Claude Code's token is missing or expired) | `%USERPROFILE%\.claude\.credentials.json`, then `%USERPROFILE%\.gentle-shell\agent\auth.json` |
+| Codex | Codex CLI (`codex`), or gentle-shell `/login` with ChatGPT (`openai-codex`) | `%USERPROFILE%\.codex\sessions\...\rollout-*.jsonl`, or the usage endpoint with the token in `%USERPROFILE%\.gentle-shell\agent\auth.json`; the newer wins |
 | Gemini | Antigravity CLI (`agy`) | Windows Credential Manager, target `gemini:antigravity` |
 
 ## Install
@@ -92,7 +92,10 @@ system `PATH` change). Then they run `go test ./...` and build
 - **Card color** is a usage traffic light: gray-white below 60 %, yellow from
   60 %, red from 85 %. Change `WarnPct` / `CritPct` in `AgentMeter.ini`.
 - **Dot** (top-right of each card): green means that provider's CLI
-  process is running right now; gray means it is not.
+  process is running right now, or a gentle-shell session used that
+  provider in the last 5 minutes (`anthropic` -> Claude, `openai*` -> Codex,
+  `google*` -> Gemini, read from `~/.gentle-shell/agent/sessions`); gray
+  means neither.
 - Process names are configurable in `AgentMeter.ini` (`ProcClaude`,
   `ProcCodex`, `ProcGemini`).
 
@@ -142,7 +145,8 @@ installed through npm runs as `node` and is not detected as running.
 
 ## Network usage
 
-Codex is read from a local file. Claude and Gemini need one HTTPS request
+Codex is read from a local file, plus one HTTPS request when you are logged
+into gentle-shell with ChatGPT. Claude and Gemini need one HTTPS request
 each, and these requests do **not** consume model tokens (they read account
 metadata, like the CLIs' own `/usage` command). To stay well below the
 endpoints' rate limits, a provider is polled only when:
@@ -169,7 +173,10 @@ Each provider fails independently.
   endpoint. If Anthropic changes its URL, headers, or `five_hour`/`seven_day`
   response shape, Claude shows `error`.
 - **Codex** reads `payload.rate_limits` from the newest session file. If the
-  Codex CLI changes that schema, Codex shows `error`.
+  Codex CLI changes that schema, Codex shows `error`. With a gentle-shell
+  ChatGPT login it also calls the undocumented
+  `GET https://chatgpt.com/backend-api/wham/usage`; if that changes, Codex
+  shows `stale` and falls back to the session files.
 - **Gemini** reads the Antigravity token from Credential Manager and calls the
   undocumented `fetchAvailableModels` endpoint on
   `daily-cloudcode-pa.googleapis.com`, sending `User-Agent: antigravity-cli`

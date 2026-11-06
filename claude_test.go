@@ -112,3 +112,42 @@ func TestIsTokenExpired(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePiAnthropicToken(t *testing.T) {
+	raw := []byte(`{"anthropic":{"type":"oauth","refresh":"r","access":"acc","expires":1793961696914},"openai":{"type":"api_key","key":"k"}}`)
+	tok, err := parsePiAnthropicToken(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.AccessToken != "acc" || tok.ExpiresAt != 1793961696914 {
+		t.Fatalf("got %+v", tok)
+	}
+}
+
+func TestParsePiAnthropicTokenRejectsMissingOrAPIKey(t *testing.T) {
+	for _, raw := range []string{`{}`, `{"anthropic":{"type":"api_key","key":"sk"}}`, `not json`} {
+		if _, err := parsePiAnthropicToken([]byte(raw)); err == nil {
+			t.Errorf("%s: want error", raw)
+		}
+	}
+}
+
+func TestPickClaudeToken(t *testing.T) {
+	now := time.UnixMilli(1000)
+	expired := claudeToken{AccessToken: "old", ExpiresAt: 500}
+	valid := claudeToken{AccessToken: "pi", ExpiresAt: 2000}
+	other := claudeToken{AccessToken: "cc", ExpiresAt: 3000}
+
+	if got, ok := pickClaudeToken(now, []claudeToken{expired, valid}); !ok || got.AccessToken != "pi" {
+		t.Errorf("fallback: got %+v %v", got, ok)
+	}
+	if got, ok := pickClaudeToken(now, []claudeToken{other, valid}); !ok || got.AccessToken != "cc" {
+		t.Errorf("first valid wins: got %+v %v", got, ok)
+	}
+	if _, ok := pickClaudeToken(now, []claudeToken{expired}); ok {
+		t.Error("all expired: want ok=false")
+	}
+	if _, ok := pickClaudeToken(now, nil); ok {
+		t.Error("none: want ok=false")
+	}
+}

@@ -18,8 +18,8 @@ AgentMeter.ini ── every UpdateRate ──> agentmeter.exe (runs ~100 ms, exi
 
 | Provider | Source | Windows shown | Notes |
 |---|---|---|---|
-| Codex | latest `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, last `rate_limits` | primary (300 min), secondary (10080 min) | Local file, no network. |
-| Claude | `GET https://api.anthropic.com/api/oauth/usage`, bearer from `~/.claude/.credentials.json` (`claudeAiOauth.accessToken`) | five_hour, seven_day | Undocumented endpoint. |
+| Codex | latest `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, last `rate_limits` | primary (300 min), secondary (10080 min) | Local file. With a gentle-shell `openai-codex` OAuth login, also `GET https://chatgpt.com/backend-api/wham/usage` (bearer `access`, header `chatgpt-account-id`), gated like Claude; the newer of rollout mtime and last fetch wins (`codexusage.go`). |
+| Claude | `GET https://api.anthropic.com/api/oauth/usage`, bearer from `~/.claude/.credentials.json` (`claudeAiOauth.accessToken`), falling back to gentle-shell's `~/.gentle-shell/agent/auth.json` (`anthropic.access`, OAuth only; an API key gets 400 from this endpoint) | five_hour, seven_day | Undocumented endpoint. |
 | Gemini | `POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels`, bearer from Windows Credential Manager target `gemini:antigravity` | weekly remaining per model group | Undocumented endpoint. Remaining is converted to used = 100 - remaining. |
 
 None of these consume model tokens: they are account metadata reads.
@@ -35,7 +35,7 @@ every run:
 ```
 
 - Process list: `CreateToolhelp32Snapshot` (golang.org/x/sys/windows). Names configurable.
-- Activity: Claude = newest mtime under `~/.claude/projects`; Gemini = newest mtime under `~/.gemini/antigravity-cli/conversations`.
+- Activity: Claude = newest mtime under `~/.claude/projects` or `~/.gentle-shell/agent/sessions` (a changed gentle-shell session also counts as "process running", since it runs as `node.exe`); Gemini = newest mtime under `~/.gemini/antigravity-cli/conversations`.
 - Fallback poll covers usage from web/mobile, which shares quota and leaves no local trace.
 
 ## Credentials and sharing
@@ -51,6 +51,7 @@ every run:
 - Header: `AgentMeter / <Provider>`, ▲ ▼ cycle enabled providers, ⚙ toggles an in-skin settings panel.
 - Settings panel: provider checkboxes, transparency −/+, size −/+. Persisted with `!WriteKeyValue`.
 - Cards: colored thin border, glowing dot, big %, rounded progress bar, reset subtext.
+- Dot (`<provider>_active`): CLI process running, or a gentle-shell session file (`~/.gentle-shell/agent/sessions/**/*.jsonl`) written in the last 5 min whose latest `"provider"` maps to the card (`piactivity.go`). gentle-shell runs every model from one `node.exe`, so the process name cannot tell providers apart.
 - All config (enabled providers, process names, interval) lives in the skin `[Variables]` and is passed to the exe as flags.
 
 ### Refresh chain (do not reorder)

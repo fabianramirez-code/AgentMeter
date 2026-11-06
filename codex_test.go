@@ -102,3 +102,84 @@ func TestNewestRolloutFile(t *testing.T) {
 		t.Errorf("newestRolloutFile() = %q, want %q", got, newFile)
 	}
 }
+
+func TestParsePiCodexToken(t *testing.T) {
+	tok, err := parsePiCodexToken([]byte(`{"anthropic":{"type":"oauth","access":"a","expires":1},"openai-codex":{"type":"oauth","access":"acc","refresh":"r","expires":1793961696914,"accountId":"acct"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.AccessToken != "acc" || tok.AccountID != "acct" || tok.ExpiresAt != 1793961696914 {
+		t.Fatalf("got %+v", tok)
+	}
+	for _, raw := range []string{`{}`, `{"openai-codex":{"type":"api_key","key":"sk"}}`, `{"openai-codex":{"type":"oauth","access":"a"}}`, `nope`} {
+		if _, err := parsePiCodexToken([]byte(raw)); err == nil {
+			t.Errorf("%s: want error", raw)
+		}
+	}
+}
+
+func TestParseCodexUsage(t *testing.T) {
+	body := []byte(`{"plan_type":"plus","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":12,"limit_window_seconds":18000,"reset_after_seconds":100,"reset_at":1793952372},"secondary_window":{"used_percent":35,"limit_window_seconds":604800,"reset_after_seconds":200,"reset_at":1794111355}}}`)
+	rl, err := parseCodexUsage(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rl.PrimaryPct != 12 || rl.SecondaryPct != 35 || rl.PrimaryReset.Unix() != 1793952372 || rl.SecondaryReset.Unix() != 1794111355 {
+		t.Fatalf("got %+v", rl)
+	}
+	if _, err := parseCodexUsage([]byte(`{"rate_limit":null}`)); err == nil {
+		t.Error("missing rate_limit: want error")
+	}
+	if _, err := parseCodexUsage([]byte(`nope`)); err == nil {
+		t.Error("invalid json: want error")
+	}
+}
+
+// writeRollout writes a rollout file with realCodexLine (primary 25%, secondary 4%).
+func writeRollout(t *testing.T, sessions string, mod time.Time) {
+	t.Helper()
+	dir := filepath.Join(sessions, "2026", "11", "01")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "rollout-2026-11-01T05-00-00-x.jsonl")
+	if err := os.WriteFile(p, []byte(realCodexLine+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.Chtimes(p, mod, mod)
+}
+
+func TestRunCodexWithoutPiLogin(t *testing.T) {
+	now := time.Date(2026, 11, 5, 21, 0, 0, 0, time.UTC)
+	d := t.TempDir()
+	sessions, noAuth := filepath.Join(d, "sessions"), filepath.Join(d, "auth.json")
+
+	// no rollout, nothing cached: same error as before
+	_, r := runCodex(now, sessions, noAuth, "nope", false, time.Hour, providerState{})
+	if r.Status != "error" || r.Msg != "no Codex session with rate_limits found" {
+		t.Errorf("empty: %+v", r)
+	}
+
+	// rollout present: its values are shown
+	writeRollout(t, sessions, now.Add(-time.Minute))
+	ps, r := runCodex(now, sessions, noAuth, "nope", false, time.Hour, providerState{})
+	if r.Status != "ok" || r.C2Pct != 4 || ps.C2.UsedPct != 4 {
+		t.Errorf("rollout: %+v", r)
+	}
+
+	// cached data newer than the rollout (from the usage endpoint) wins
+	cached := ps
+	cached.LastFetch = now.Add(-10 * time.Second)
+	cached.C2.UsedPct = 35
+	_, r = runCodex(now, sessions, noAuth, "nope", false, time.Hour, cached)
+	if r.C2Pct != 35 {
+		t.Errorf("newer cache should win: %+v", r)
+	}
+
+	// no rollout any more but something cached: stale, as before
+	os.RemoveAll(sessions)
+	_, r = runCodex(now, sessions, noAuth, "nope", false, time.Hour, ps)
+	if r.Status != "stale" || r.Msg != "no Codex session, cached values" {
+		t.Errorf("stale: %+v", r)
+	}
+}

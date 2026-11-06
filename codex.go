@@ -71,6 +71,25 @@ func findLatestRateLimits(sessionsDir string) (codexRateLimits, error) {
 	return parseCodexLine(line)
 }
 
+// latestRolloutSnapshot is findLatestRateLimits plus the rollout file's
+// modification time, so callers can tell whether it is newer than cached data.
+func latestRolloutSnapshot(sessionsDir string) (codexRateLimits, time.Time, error) {
+	file, err := newestRolloutFile(sessionsDir)
+	if err != nil {
+		return codexRateLimits{}, time.Time{}, err
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		return codexRateLimits{}, time.Time{}, err
+	}
+	line, err := lastRateLimitsLine(file)
+	if err != nil {
+		return codexRateLimits{}, time.Time{}, err
+	}
+	rl, err := parseCodexLine(line)
+	return rl, info.ModTime(), err
+}
+
 // newestRolloutFile finds the most recently modified rollout-*.jsonl file under
 // sessionsDir, scanning date directories newest-first to avoid walking the whole tree.
 func newestRolloutFile(sessionsDir string) (string, error) {
