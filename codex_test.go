@@ -155,14 +155,14 @@ func TestRunCodexWithoutPiLogin(t *testing.T) {
 	sessions, noAuth := filepath.Join(d, "sessions"), filepath.Join(d, "auth.json")
 
 	// no rollout, nothing cached: same error as before
-	_, r := runCodex(now, sessions, noAuth, "nope", false, time.Hour, providerState{})
+	_, r := runCodex(now, sessions, []string{noAuth}, "nope", false, time.Hour, providerState{})
 	if r.Status != "error" || r.Msg != "no Codex session with rate_limits found" {
 		t.Errorf("empty: %+v", r)
 	}
 
 	// rollout present: its values are shown
 	writeRollout(t, sessions, now.Add(-time.Minute))
-	ps, r := runCodex(now, sessions, noAuth, "nope", false, time.Hour, providerState{})
+	ps, r := runCodex(now, sessions, []string{noAuth}, "nope", false, time.Hour, providerState{})
 	if r.Status != "ok" || r.C2Pct != 4 || ps.C2.UsedPct != 4 {
 		t.Errorf("rollout: %+v", r)
 	}
@@ -171,14 +171,14 @@ func TestRunCodexWithoutPiLogin(t *testing.T) {
 	cached := ps
 	cached.LastFetch = now.Add(-10 * time.Second)
 	cached.C2.UsedPct = 35
-	_, r = runCodex(now, sessions, noAuth, "nope", false, time.Hour, cached)
+	_, r = runCodex(now, sessions, []string{noAuth}, "nope", false, time.Hour, cached)
 	if r.C2Pct != 35 {
 		t.Errorf("newer cache should win: %+v", r)
 	}
 
 	// no rollout any more but something cached: stale, as before
 	os.RemoveAll(sessions)
-	_, r = runCodex(now, sessions, noAuth, "nope", false, time.Hour, ps)
+	_, r = runCodex(now, sessions, []string{noAuth}, "nope", false, time.Hour, ps)
 	if r.Status != "stale" || r.Msg != "no Codex session, cached values" {
 		t.Errorf("stale: %+v", r)
 	}

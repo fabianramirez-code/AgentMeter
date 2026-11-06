@@ -97,10 +97,10 @@ func TestRunClaudeTokenSelection(t *testing.T) {
 		if pi != "" {
 			os.WriteFile(pp, []byte(pi), 0o600)
 		}
-		_, r := runClaude(now, cp, pp, "nope", filepath.Join(d, "p"), filepath.Join(d, "s"), time.Hour, providerState{})
+		_, r := runClaude(now, cp, []string{pp}, "nope", filepath.Join(d, "p"), []string{filepath.Join(d, "s")}, time.Hour, providerState{})
 		return r
 	}
-	if r := run(`{"claudeAiOauth":{"accessToken":"SECRET1","expiresAt":10}}`, `{"anthropic":{"type":"oauth","access":"SECRET2","expires":10}}`); r.Status != "stale" || r.Msg != "login expired, open claude or gentle-shell" || strings.Contains(r.C1Reset, "SECRET") {
+	if r := run(`{"claudeAiOauth":{"accessToken":"SECRET1","expiresAt":10}}`, `{"anthropic":{"type":"oauth","access":"SECRET2","expires":10}}`); r.Status != "stale" || r.Msg != "login expired, open claude, pi or gentle-shell" || strings.Contains(r.C1Reset, "SECRET") {
 		t.Errorf("both expired: %+v", r)
 	}
 	if r := run("", ""); r.Status != "error" || r.Msg != "not logged into Claude" {

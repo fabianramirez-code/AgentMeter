@@ -74,8 +74,14 @@ func main() {
 	now := time.Now()
 	st := loadState(*statePath)
 
-	// cards whose provider a gentle-shell session used in the last few minutes
-	piActive := piActiveProviders(filepath.Join(home, ".gentle-shell", "agent", "sessions"), now, piActiveWindow)
+	// cards whose provider a Pi / gentle-shell session used in the last few minutes
+	piDirs := piAgentDirs(home)
+	piActive := map[string]bool{}
+	for _, dir := range piPaths(piDirs, "sessions") {
+		for card := range piActiveProviders(dir, now, piActiveWindow) {
+			piActive[card] = true
+		}
+	}
 
 	out := map[string]string{}
 	for _, name := range []string{"claude", "codex", "gemini"} {
@@ -83,7 +89,7 @@ func main() {
 		if !enabled[name] {
 			r = result{Status: "off"}
 		} else {
-			r = runProvider(name, now, home, procs[name], fallback, st, piActive)
+			r = runProvider(name, now, home, procs[name], fallback, st, piDirs, piActive)
 			if apiCall := st.Providers[name].LastAttempt.Equal(now); apiCall || r.Status != "ok" {
 				log.Printf("%s: status=%s api_call=%v msg=%q", name, r.Status, apiCall, r.Msg)
 			}
@@ -158,16 +164,16 @@ func addResult(out map[string]string, name string, r result) {
 
 // runProvider updates st.Providers[name] in place (caching the result) and
 // returns the row to render this run. Each provider fails independently.
-func runProvider(name string, now time.Time, home, procName string, fallback time.Duration, st state, piActive map[string]bool) result {
+func runProvider(name string, now time.Time, home, procName string, fallback time.Duration, st state, piDirs []string, piActive map[string]bool) result {
 	cached := st.Providers[name]
 
 	switch name {
 	case "codex":
-		ps, r := runCodex(now, filepath.Join(home, ".codex", "sessions"), filepath.Join(home, ".gentle-shell", "agent", "auth.json"), procName, piActive["codex"], fallback, cached)
+		ps, r := runCodex(now, filepath.Join(home, ".codex", "sessions"), piPaths(piDirs, "auth.json"), procName, piActive["codex"], fallback, cached)
 		st.Providers[name] = ps
 		return r
 	case "claude":
-		ps, r := runClaude(now, filepath.Join(home, ".claude", ".credentials.json"), filepath.Join(home, ".gentle-shell", "agent", "auth.json"), procName, filepath.Join(home, ".claude", "projects"), filepath.Join(home, ".gentle-shell", "agent", "sessions"), fallback, cached)
+		ps, r := runClaude(now, filepath.Join(home, ".claude", ".credentials.json"), piPaths(piDirs, "auth.json"), procName, filepath.Join(home, ".claude", "projects"), piPaths(piDirs, "sessions"), fallback, cached)
 		st.Providers[name] = ps
 		return r
 	case "gemini":
@@ -183,9 +189,15 @@ func runProvider(name string, now time.Time, home, procName string, fallback tim
 // endpoint polled with the gentle-shell (Pi) ChatGPT login. The endpoint is
 // gated like Claude's: at least minFetchInterval apart, and only while codex
 // runs or a gentle-shell session uses an OpenAI model, else every fallback.
-func runCodex(now time.Time, sessionsDir, piAuthPath, procName string, piActive bool, fallback time.Duration, cached providerState) (providerState, result) {
+func runCodex(now time.Time, sessionsDir string, piAuthPaths []string, procName string, piActive bool, fallback time.Duration, cached providerState) (providerState, result) {
 	fetchFailed := false
-	tok, hasToken := readPiCodexToken(now, piAuthPath)
+	var tok codexToken
+	hasToken := false
+	for _, p := range piAuthPaths {
+		if tok, hasToken = readPiCodexToken(now, p); hasToken {
+			break
+		}
+	}
 	if hasToken {
 		running := piActive || isProcessRunning(procName)
 		if shouldFetch(now, cached.LastAttempt, cached.LastAttempt, minFetchInterval, fallback, running, true) {
@@ -232,7 +244,7 @@ func codexState(rl codexRateLimits, fetched, attempt time.Time) providerState {
 // when Claude Code's is missing or expired. Activity in either tool's session
 // folder counts; gentle-shell runs as node.exe, so a changed Pi session file
 // stands in for the process check.
-func runClaude(now time.Time, credPath, piAuthPath, procName, activityDir, piSessionsDir string, fallback time.Duration, cached providerState) (providerState, result) {
+func runClaude(now time.Time, credPath string, piAuthPaths []string, procName, activityDir string, piSessionsDirs []string, fallback time.Duration, cached providerState) (providerState, result) {
 	var candidates []claudeToken
 	noTokenMsg := "not logged into Claude"
 	if raw, err := readClaudeCredentials(credPath); err == nil {
@@ -243,9 +255,11 @@ func runClaude(now time.Time, credPath, piAuthPath, procName, activityDir, piSes
 			noTokenMsg = "could not read Claude credentials"
 		}
 	}
-	if raw, err := os.ReadFile(piAuthPath); err == nil {
-		if tok, err := parsePiAnthropicToken(raw); err == nil {
-			candidates = append(candidates, tok)
+	for _, p := range piAuthPaths {
+		if raw, err := os.ReadFile(p); err == nil {
+			if tok, err := parsePiAnthropicToken(raw); err == nil {
+				candidates = append(candidates, tok)
+			}
 		}
 	}
 	if len(candidates) == 0 {
@@ -254,14 +268,19 @@ func runClaude(now time.Time, credPath, piAuthPath, procName, activityDir, piSes
 
 	token, ok := pickClaudeToken(now, candidates)
 	if !ok {
-		const msg = "login expired, open claude or gentle-shell"
+		const msg = "login expired, open claude, pi or gentle-shell"
 		if cached.LastFetch.IsZero() {
 			return cached, errorResult("stale", msg)
 		}
 		return cached, cardsToResult("stale", msg, now, cached)
 	}
 
-	piActivity := newestModTime(piSessionsDir)
+	var piActivity time.Time
+	for _, dir := range piSessionsDirs {
+		if t := newestModTime(dir); t.After(piActivity) {
+			piActivity = t
+		}
+	}
 	processRunning := isProcessRunning(procName) || piActivity.After(cached.LastActivity)
 	activity := newestModTime(activityDir)
 	if piActivity.After(activity) {

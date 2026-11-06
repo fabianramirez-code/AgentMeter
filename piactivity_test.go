@@ -51,3 +51,21 @@ func TestPiProviderCard(t *testing.T) {
 		}
 	}
 }
+
+func TestPiAgentDirs(t *testing.T) {
+	home := filepath.Join("h")
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	want := []string{filepath.Join("h", ".gentle-shell", "agent"), filepath.Join("h", ".pi", "agent")}
+	if got := piAgentDirs(home); len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("default: got %v want %v", got, want)
+	}
+	// a custom Pi agent dir is added first; duplicates are dropped
+	t.Setenv("PI_CODING_AGENT_DIR", want[1])
+	if got := piAgentDirs(home); len(got) != 2 || got[0] != want[1] || got[1] != want[0] {
+		t.Errorf("env dup: got %v", got)
+	}
+	t.Setenv("PI_CODING_AGENT_DIR", "custom")
+	if got := piAgentDirs(home); len(got) != 3 || got[0] != "custom" {
+		t.Errorf("env custom: got %v", got)
+	}
+}

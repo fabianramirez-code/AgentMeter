@@ -75,3 +75,27 @@ func lastPiProvider(path string) string {
 	}
 	return string(m[len(m)-1][1])
 }
+
+// piAgentDirs lists the Pi agent directories to read auth.json and sessions
+// from: $PI_CODING_AGENT_DIR when set, gentle-shell's ~/.gentle-shell/agent
+// and plain Pi's ~/.pi/agent. Missing directories are harmless.
+func piAgentDirs(home string) []string {
+	var dirs []string
+	seen := map[string]bool{}
+	for _, d := range []string{os.Getenv("PI_CODING_AGENT_DIR"), filepath.Join(home, ".gentle-shell", "agent"), filepath.Join(home, ".pi", "agent")} {
+		if d != "" && !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
+// piPaths joins name onto every Pi agent dir.
+func piPaths(dirs []string, name string) []string {
+	out := make([]string, len(dirs))
+	for i, d := range dirs {
+		out[i] = filepath.Join(d, name)
+	}
+	return out
+}

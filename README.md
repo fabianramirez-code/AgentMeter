@@ -4,6 +4,10 @@ A Rainmeter desktop widget that shows subscription quota usage for Claude,
 Codex and Gemini (Antigravity CLI): session (5h) and weekly (7d) usage, time
 until reset, and whether each CLI is currently running.
 
+Works with the official CLIs (Claude Code, Codex CLI, Antigravity CLI) and
+with the [Pi](https://github.com/earendil-works/pi) coding agent and
+gentle-shell (a Pi distribution): see [Pi and gentle-shell](#pi-and-gentle-shell).
+
 On the Claude screen, if your account has a per-model weekly limit (shown as
 "Current week (<model>)" in `claude /usage`, e.g. Fable), a third card appears
 below the usual two. The widget doesn't grow to fit it: the card area scrolls
@@ -41,9 +45,34 @@ simply show an error message on their cards; the others keep working.
 
 | Provider | Log in with | Where AgentMeter reads it |
 |---|---|---|
-| Claude | Claude Code (`claude`), or gentle-shell `/login` with a Claude subscription (used when Claude Code's token is missing or expired) | `%USERPROFILE%\.claude\.credentials.json`, then `%USERPROFILE%\.gentle-shell\agent\auth.json` |
-| Codex | Codex CLI (`codex`), or gentle-shell `/login` with ChatGPT (`openai-codex`) | `%USERPROFILE%\.codex\sessions\...\rollout-*.jsonl`, or the usage endpoint with the token in `%USERPROFILE%\.gentle-shell\agent\auth.json`; the newer wins |
+| Claude | Claude Code (`claude`), or Pi / gentle-shell `/login` with a Claude subscription (used when Claude Code's token is missing or expired) | `%USERPROFILE%\.claude\.credentials.json`, then the Pi `auth.json` |
+| Codex | Codex CLI (`codex`), or Pi / gentle-shell `/login` with ChatGPT (`openai-codex`) | `%USERPROFILE%\.codex\sessions\...\rollout-*.jsonl`, or the usage endpoint with the token in the Pi `auth.json`; the newer wins |
 | Gemini | Antigravity CLI (`agy`) | Windows Credential Manager, target `gemini:antigravity` |
+
+## Pi and gentle-shell
+
+[Pi](https://github.com/earendil-works/pi) and gentle-shell run every model
+from one `node.exe`, so AgentMeter reads their agent directory instead of a
+process name. It checks, in order: `%PI_CODING_AGENT_DIR%` (if set),
+`%USERPROFILE%\.gentle-shell\agent` (gentle-shell) and
+`%USERPROFILE%\.pi\agent` (plain Pi).
+
+- **Log in with your subscription**, not an API key: run `/login` and pick
+  Anthropic (Claude Pro/Max) and/or ChatGPT (`openai-codex`). The token is
+  stored in `auth.json` and Pi refreshes it while you use it; AgentMeter only
+  reads it. An API key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) is billed per
+  token and has no subscription quota, so the cards cannot show it.
+- **Claude**: uses the Pi token when Claude Code's is missing or expired, so
+  you no longer need to open Claude Code to keep the card fresh.
+- **Codex**: polls the ChatGPT usage endpoint with the Pi token; if you also
+  run the `codex` CLI, the newer value wins.
+- **Gemini**: not supported through Pi, which has no Antigravity login; the
+  card still needs the `agy` CLI login.
+- **Polling and the dot**: a Pi session file (`sessions\**\*.jsonl`) written
+  in the last 5 minutes counts as activity for the provider of its latest
+  message (`anthropic` -> Claude, `openai*` -> Codex, `google*` -> Gemini):
+  that card's dot turns green and it is polled every 5 minutes instead of
+  every fallback interval.
 
 ## Install
 
@@ -94,7 +123,7 @@ system `PATH` change). Then they run `go test ./...` and build
 - **Dot** (top-right of each card): green means that provider's CLI
   process is running right now, or a gentle-shell session used that
   provider in the last 5 minutes (`anthropic` -> Claude, `openai*` -> Codex,
-  `google*` -> Gemini, read from `~/.gentle-shell/agent/sessions`); gray
+  `google*` -> Gemini, read from the Pi agent `sessions` folder); gray
   means neither.
 - Process names are configurable in `AgentMeter.ini` (`ProcClaude`,
   `ProcCodex`, `ProcGemini`).
